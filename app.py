@@ -1,127 +1,82 @@
 import streamlit as st
-import requests
+import os
+import tempfile
 
-BACKEND_URL = "http://localhost:8000"
+from services.pdf_extractor import extract_text_from_pdf
+from services.chunker import chunk_text
+from services.embedder import embed_chunks
+from services.vector_store import VectorStore
+from services.qa_engine import answer_question
 
+# -------------------------------
+# App Config
+# -------------------------------
 st.set_page_config(
-    page_title="Research Assistant",
-    page_icon="📑",
+    page_title="Research Paper Assistant",
+    page_icon="📄",
     layout="centered"
 )
 
 # -------------------------------
-# Minimal CSS (very important)
+# State
 # -------------------------------
-st.markdown("""
-<style>
-.main {
-    max-width: 720px;
-    padding-top: 2rem;
-}
-
-h1 {
-    font-weight: 600;
-    letter-spacing: -0.5px;
-}
-
-.stTextInput > div > div > input {
-    font-size: 16px;
-    padding: 0.75rem;
-}
-
-.stButton > button {
-    padding: 0.6rem 1.2rem;
-    font-size: 15px;
-}
-
-.answer-box {
-    background-color: #f8f9fa;
-    padding: 1.2rem;
-    border-radius: 8px;
-    line-height: 1.6;
-    font-size: 16px;
-}
-</style>
-""", unsafe_allow_html=True)
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
 
 # -------------------------------
-# App State
+# UI
 # -------------------------------
-if "pdf_uploaded" not in st.session_state:
-    st.session_state.pdf_uploaded = False
+st.title("📄 Research Paper Assistant")
+st.caption("Ask questions grounded strictly in the uploaded research paper.")
 
-# -------------------------------
-# Header
-# -------------------------------
-st.markdown("## Research Paper Assistant")
-st.markdown(
-    "<span style='color: #6c757d;'>Ask questions grounded strictly in the uploaded paper.</span>",
-    unsafe_allow_html=True
-)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# -------------------------------
-# Upload Section
-# -------------------------------
 uploaded_file = st.file_uploader(
     "Upload a research paper (PDF)",
-    type=["pdf"],
-    label_visibility="collapsed"
+    type=["pdf"]
 )
 
-if uploaded_file is not None and not st.session_state.pdf_uploaded:
+# -------------------------------
+# PDF Processing
+# -------------------------------
+if uploaded_file is not None and st.session_state.vector_store is None:
     if st.button("Process paper"):
         with st.spinner("Reading and indexing document..."):
-            files = {
-                "file": (uploaded_file.name, uploaded_file, "application/pdf")
-            }
-            response = requests.post(f"{BACKEND_URL}/upload", files=files)
+            # Save PDF temporarily
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(uploaded_file.read())
+                pdf_path = tmp.name
 
-            if response.status_code == 200:
-                st.session_state.pdf_uploaded = True
-                st.success("Paper ready for querying.")
-            else:
-                st.error("Failed to process the paper.")
-                st.code(response.text)
+            # Extract text
+            text = extract_text_from_pdf(pdf_path)
 
-# -------------------------------
-# Divider
-# -------------------------------
-if st.session_state.pdf_uploaded:
-    st.markdown("<hr style='margin: 2rem 0;'>", unsafe_allow_html=True)
+            # Chunk
+            chunks = chunk_text(text)
+
+            # Embed
+            embeddings = embed_chunks(chunks)
+
+            # Store
+            vector_store = VectorStore(embeddings.shape[1])
+            vector_store.add(embeddings, chunks)
+
+            st.session_state.vector_store = vector_store
+
+            st.success("Paper indexed successfully.")
 
 # -------------------------------
 # Question Section
 # -------------------------------
-question = st.text_input(
-    "Ask a question about the paper",
-    disabled=not st.session_state.pdf_uploaded,
-    placeholder="e.g. What methods are discussed for pose estimation?"
-)
+if st.session_state.vector_store is not None:
+    question = st.text_input(
+        "Ask a question about the paper",
+        placeholder="e.g. What methods are discussed?"
+    )
 
-if st.session_state.pdf_uploaded and st.button("Get answer"):
-    if not question.strip():
-        st.warning("Please enter a question.")
-    else:
-        with st.spinner("Analyzing content..."):
-            response = requests.post(
-                f"{BACKEND_URL}/ask",
-                json={"question": question},
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                }
+    if st.button("Get answer"):
+        with st.spinner("Analyzing paper..."):
+            answer = answer_question(
+                question,
+                st.session_state.vector_store
             )
 
-            if response.status_code == 200:
-                answer = response.json()["answer"]
-
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("### Answer")
-                st.markdown("### Answer")
-                st.markdown(answer)
-
-            else:
-                st.error("Could not retrieve answer.")
-                st.code(response.text)
+            st.markdown("### Answer")
+            st.markdown(answer)
