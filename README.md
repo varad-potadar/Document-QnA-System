@@ -27,23 +27,18 @@ Secure API key handling via environment variables
 🧠 System Architecture
 
 Streamlit UI
-
      ↓
      
 PDF Text Extraction (PyMuPDF)
-
      ↓
      
 Text Chunking
-
      ↓
      
 Embeddings (Sentence Transformers)
-
      ↓
      
 FAISS Vector Search
-
      ↓
      
 Groq LLM (Answer Generation)
