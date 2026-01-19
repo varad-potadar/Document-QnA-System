@@ -8,12 +8,19 @@ This project focuses on clarity, correctness, and simplicity, avoiding unnecessa
 ✨ Key Features
 
 Upload and process academic research papers (PDF)
+
 Robust text extraction from single- and multi-column papers
+
 Intelligent text chunking with overlap
+
 Semantic retrieval using FAISS
+
 Accurate, document-grounded answers
+
 Clean, minimal Streamlit user interface
+
 Fast inference using Groq LLM API
+
 Secure API key handling via environment variables
 
 
